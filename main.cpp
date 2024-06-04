@@ -1,6 +1,5 @@
 #include <iostream>
 #include <cmath>
-#include <limits>
 #include <stdio.h>
 
 class DoubleDouble {
@@ -57,46 +56,41 @@ public:
     }
 
     // Exponential function
-    static DoubleDouble exp(DoubleDouble x) {
+    static DoubleDouble exp_dd(const DoubleDouble& x) {
+        const double ln2_hi = 6.93147180369123816490e-01;
+        const double ln2_lo = 1.90821492927058770002e-10;
+        const double inv_ln2 = 1.44269504088896338700e+00;
 
-        if (x.hi == 0.0 && x.lo == 0.0) {
-            return DoubleDouble(1.0, 0.0);
-        }
+        // Decompose x into n and r so that x = n * ln(2) + r
+        int n = static_cast<int>(x.hi * inv_ln2 + (x.hi >= 0 ? 0.5 : -0.5));
+        DoubleDouble r = add(x, DoubleDouble(-n * ln2_hi, -n * ln2_lo));
 
-        bool negative = x.hi < 0.0;
-        if (negative) {
-            x.hi = -x.hi;
-            x.lo = -x.lo;
-        }
+        // Compute exp(r) using Taylor series
+        DoubleDouble result(1.0, 0.0);
+        DoubleDouble term(1.0, 0.0);    
+        DoubleDouble r2 = r;
 
-        DoubleDouble sum(1.0, 0.0);
-        DoubleDouble term(1.0, 0.0);
-        int n = 1;
-
-        while (true) {
-            term = divide(multiply(term, x), DoubleDouble(n, 0.0));
-            DoubleDouble newSum = add(sum, term);
-
-            if (std::isinf(newSum.hi) || std::isnan(newSum.hi)) {
-                if (negative) {
-                    return DoubleDouble(0.0, 0.0);
-                } else {
-                    return DoubleDouble(std::numeric_limits<double>::infinity(), 0.0);
-                }
-            }
-
-            if (newSum.hi == sum.hi && newSum.lo == sum.lo) {
+        for (int i = 1; i < 100; ++i) {
+            term = multiply(term, r2);
+            term.hi /= i;
+            result = add(result, term);
+            if (std::abs(term.hi) < std::abs(result.hi) * std::numeric_limits<double>::epsilon()) {
                 break;
             }
-            sum = newSum;
-            ++n;
         }
 
-        if (negative) {
-            return divide(DoubleDouble(1.0, 0.0), sum);
+        // Scale the result by 2^n
+        if (n > 0) {
+            for (int i = 0; i < n; ++i) {
+                result = multiply(result, DoubleDouble(2.0, 0.0));
+            }
+        } else {
+            for (int i = 0; i < -n; ++i) {
+                result = multiply(result, DoubleDouble(0.5, 0.0));
+            }
         }
 
-        return sum;
+        return result;
     }
 
     // Getter for the hi part
@@ -110,19 +104,11 @@ public:
     }
 };
 
+
 int main() {
-    DoubleDouble x_values[] = {DoubleDouble(0.0, 0.0), DoubleDouble(1.0, 0.0), DoubleDouble(2.0, 0.0),
-                               DoubleDouble(3.0, 0.0), DoubleDouble(4.0, 0.0), DoubleDouble(5.0, 0.0),
-                               DoubleDouble(6.0, 0.0), DoubleDouble(-650.0, 0.0), DoubleDouble(700.0, 0.0),
-                               DoubleDouble(-1000, 0.0), DoubleDouble(1000, 0.0)};
-
-    for (int i = 0; i < 11; ++i) {
-        DoubleDouble result = DoubleDouble::exp(x_values[i]);
-        std::cout << "exp(" << x_values[i].get_hi() << ") = ";
-        printf("hi: %.40e   lo: %.40e\n", result.get_hi(), result.get_lo());
-    }
-
+    DoubleDouble x(1.0, 0.0);
+    DoubleDouble result = DoubleDouble::exp_dd(x);
+    printf("exp(%.0f) = hi : %.40e lo: %.40e\n", x.get_hi(), result.get_hi(), result.get_lo());
     return 0;
 }
-//exp(-650) from wolfram 3.9754497359086468077890997537948254523324502696238e-31 3.975449735908647e-31 -3.3648383059169216e-48 + 
-//exp(700) from wolfram 1.0142320547350045094553295952312676152046795722431e+304 1.0142320547350045e+304 1.6666571920734673e+287 +
+//exp(1) = hi: 2.7182818284590450907955982984276488423347e+00   lo: 1.4456468917292496647933303150418560929681e-16
